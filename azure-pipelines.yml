@@ -1,0 +1,39 @@
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+
+- script: |
+    terraform init
+    terraform apply --auto-approve
+  displayName: 'Apply Terraform configuration'
+
+- task: PowerShell@2
+  displayName: 'Capture Terraform output variables and push to pipeline variables'
+  inputs:
+    targetType: 'inline'
+    script: |
+      $tfoutput = (terraform output --json) | ConvertFrom-Json
+      if ($tfoutput -eq $null) {
+        Write-Host("No Terraform output variables found")
+      } else {
+        foreach($outputVar in $tfoutput.psobject.properties) {
+          if ($outputVar.value.sensitive -eq "true") {
+              Write-Host("##vso[task.setvariable variable=$($outputVar.name);issecret=true]$($outputVar.value.value)")
+              Write-Host("$($outputVar.name)-***SECRET***")
+          } else {  
+              Write-Host("##vso[task.setvariable variable=$($outputVar.name);]$($outputVar.value.value)")
+              Write-Host("$($outputVar.name)-$($outputVar.value.value)")
+          }
+        }
+      }
+
+- task: PowerShell@2
+  displayName: 'Test a pipeline variables'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Write-Host "afw_private_ip_address = $($env:AFW_PRIVATE_IP_ADDRESS)"
